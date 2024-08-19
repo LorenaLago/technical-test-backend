@@ -1,0 +1,860 @@
+Subject: [PATCH] Prueba Playtomic Lorena Lago
+---
+Index: src/main/java/com/playtomic/tests/wallet/service/Wallet.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/service/Wallet.java b/src/main/java/com/playtomic/tests/wallet/service/Wallet.java
+new file mode 100644
+--- /dev/null	(date 1723910070967)
++++ b/src/main/java/com/playtomic/tests/wallet/service/Wallet.java	(date 1723910070967)
+@@ -0,0 +1,32 @@
++package com.playtomic.tests.wallet.service;
++
++import com.playtomic.tests.wallet.infrastructure.WalletEntity;
++import lombok.Getter;
++import lombok.NonNull;
++import lombok.Setter;
++
++import java.math.BigDecimal;
++
++@Setter
++@Getter
++public class Wallet {
++
++    @NonNull
++    private String id;
++
++    private BigDecimal currentBalance;
++
++    public @NonNull String getId() {
++        return id;
++    }
++
++    public void setId(@NonNull String id) {
++        this.id = id;
++    }
++
++    public Wallet from(WalletEntity entity){
++        this.id = entity.getId();
++        this.currentBalance = entity.getCurrentBalance();
++        return this;
++    }
++}
+Index: src/main/java/com/playtomic/tests/wallet/infrastructure/WalletRepository.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletRepository.java b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletRepository.java
+new file mode 100644
+--- /dev/null	(date 1723978076817)
++++ b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletRepository.java	(date 1723978076817)
+@@ -0,0 +1,16 @@
++package com.playtomic.tests.wallet.infrastructure;
++
++import org.springframework.data.repository.CrudRepository;
++import org.springframework.data.repository.query.Param;
++import org.springframework.stereotype.Repository;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.util.Optional;
++
++@Repository
++public interface WalletRepository extends CrudRepository<WalletEntity, String> {
++
++    @Transactional
++    Optional<WalletEntity> getWallet(@Param("id") String id);
++
++}
+Index: src/main/java/com/playtomic/tests/wallet/service/Payment.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/service/Payment.java b/src/main/java/com/playtomic/tests/wallet/service/Payment.java
+--- a/src/main/java/com/playtomic/tests/wallet/service/Payment.java	(revision 905e913c79d43fdefc989589c0aacfaed07290ec)
++++ b/src/main/java/com/playtomic/tests/wallet/service/Payment.java	(date 1723973612018)
+@@ -2,8 +2,11 @@
+
+ import com.fasterxml.jackson.annotation.JsonCreator;
+ import com.fasterxml.jackson.annotation.JsonProperty;
++import lombok.Getter;
+ import lombok.NonNull;
+
++
++@Getter
+ public class Payment {
+
+     @NonNull
+Index: src/main/java/com/playtomic/tests/wallet/service/WalletService.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/service/WalletService.java b/src/main/java/com/playtomic/tests/wallet/service/WalletService.java
+new file mode 100644
+--- /dev/null	(date 1723974956733)
++++ b/src/main/java/com/playtomic/tests/wallet/service/WalletService.java	(date 1723974956733)
+@@ -0,0 +1,53 @@
++package com.playtomic.tests.wallet.service;
++
++import com.playtomic.tests.wallet.infrastructure.WalletEntity;
++import com.playtomic.tests.wallet.infrastructure.WalletHistoricEntity;
++import com.playtomic.tests.wallet.infrastructure.WalletHistoricRepository;
++import com.playtomic.tests.wallet.infrastructure.WalletRepository;
++import org.hibernate.HibernateException;
++import org.springframework.stereotype.Service;
++
++import java.math.BigDecimal;
++import java.time.Instant;
++import java.util.Optional;
++
++@Service
++public class WalletService {
++
++    private final WalletRepository repository;
++    private final WalletHistoricRepository historicRepository;
++    private final StripeService stripeService;
++
++    public WalletService(WalletRepository walletRepository, WalletHistoricRepository historicRepository, StripeService stripeService) {
++        this.repository = walletRepository;
++        this.stripeService = stripeService;
++        this.historicRepository = historicRepository;
++    }
++
++    public Wallet getWallet(String someId) throws WalletNotFoundException {
++        Wallet wallet = new Wallet();
++        Optional<WalletEntity> walletEntity = repository.getWallet(someId);
++        if (walletEntity.isPresent()) {
++            return wallet.from(walletEntity.get());
++        }
++        throw new WalletNotFoundException();
++    }
++
++
++    public void topUp(String id, String creditCardNumber, BigDecimal amount) throws WalletNotFoundException, StripeServiceException {
++        Payment payment = null;
++        Wallet wallet = null;
++        try {
++            wallet = getWallet(id);
++            payment = stripeService.charge(creditCardNumber, amount);
++
++            BigDecimal updatedBalance = wallet.getCurrentBalance().add(amount);
++            repository.save(new WalletEntity(id, updatedBalance));
++            historicRepository.save(new WalletHistoricEntity(id, updatedBalance, Instant.now(), payment.getId()));
++
++        } catch (HibernateException e) {
++            if (payment != null) stripeService.refund(payment.getId());
++            if (wallet != null) repository.save(new WalletEntity(id, wallet.getCurrentBalance()));
++        }
++    }
++}
+Index: src/test/java/com/playtomic/tests/wallet/WalletApplicationIT.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/test/java/com/playtomic/tests/wallet/WalletApplicationIT.java b/src/test/java/com/playtomic/tests/wallet/WalletApplicationIT.java
+--- a/src/test/java/com/playtomic/tests/wallet/WalletApplicationIT.java	(revision 905e913c79d43fdefc989589c0aacfaed07290ec)
++++ b/src/test/java/com/playtomic/tests/wallet/WalletApplicationIT.java	(date 1723978124088)
+@@ -1,14 +1,177 @@
+ package com.playtomic.tests.wallet;
+
++import com.playtomic.tests.wallet.api.WalletController;
++import com.playtomic.tests.wallet.infrastructure.WalletEntity;
++import com.playtomic.tests.wallet.infrastructure.WalletHistoricRepository;
++import com.playtomic.tests.wallet.infrastructure.WalletRepository;
++import com.playtomic.tests.wallet.service.StripeService;
++import com.playtomic.tests.wallet.service.WalletNotFoundException;
++import com.playtomic.tests.wallet.service.WalletService;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeAll;
++import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.Test;
++import org.mockito.MockitoAnnotations;
++import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.http.HttpStatus;
+ import org.springframework.test.context.ActiveProfiles;
++import org.springframework.web.context.WebApplicationContext;
++
++import java.io.IOException;
++import java.math.BigDecimal;
++import java.net.URISyntaxException;
++import java.nio.charset.StandardCharsets;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.nio.file.Paths;
++import java.util.Optional;
++
++import static com.github.tomakehurst.wiremock.client.WireMock.*;
++import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
++import static org.hamcrest.core.Is.is;
++import static org.mockito.BDDMockito.given;
++import static org.mockito.Mockito.mock;
++import static io.restassured.module.mockmvc.RestAssuredMockMvc.given;
++import static org.mockito.Mockito.reset;
++import static org.mockito.MockitoAnnotations.initMocks;
++import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
++
++import com.github.tomakehurst.wiremock.WireMockServer;
+
+-@SpringBootTest
++
++@SpringBootTest(classes = {
++        WalletController.class})
+ @ActiveProfiles(profiles = "test")
+ public class WalletApplicationIT {
+
+-	@Test
+-	public void emptyTest() {
+-	}
++    @Autowired
++    private WalletController walletController;
++
++    @Autowired
++    private WebApplicationContext webApplicationContext;
++
++    @Autowired
++    private WalletRepository walletRepository;
++
++    public static WireMockServer wireMockServer = new WireMockServer(7777);
++
++
++    @BeforeEach
++    public void initialize() {
++        initMocks(this);
++        reset(this.walletRepository);
++        wireMockServer.start();
++    }
++
++    @BeforeAll
++    public static void start() {
++        wireMockServer.start();
++    }
++
++
++    @AfterEach
++    public void stop() {
++        wireMockServer.stop();
++    }
++
++    @Test
++    public void emptyTest() {
++    }
++
++
++    @Test
++    public void returnAWalletForAGivenId() {
++        given(this.walletRepository.getWallet("someId")).willReturn(Optional.of(this.getWalletEntity()));
++        given().standaloneSetup(this.walletController)
++                .when()
++                .get("/api/getWallet/someId")
++                .then()
++                .statusCode(HttpStatus.OK.value());
++    }
++
++    @Test
++    public void returnAnErrorForANotFoundWallet() {
++        given(this.walletRepository.getWallet("someId")).willThrow(new WalletNotFoundException());
++        given().standaloneSetup(this.walletController)
++                .when()
++                .get("/api/getWallet/someId")
++                .then()
++                .statusCode(HttpStatus.NOT_FOUND.value());
++    }
++
++    @Test
++    public void topupWallet() throws URISyntaxException, IOException {
++        given(this.walletRepository.getWallet("someId")).willReturn(Optional.of(this.getWalletEntity()));
++
++        wireMockServer.stubFor(
++                post(urlEqualTo("http://localhost:9999"))
++                        .withRequestBody(equalTo(getJsonFromFile("stripeRequest.json")))
++                        .willReturn(
++                                aResponse()
++                                        .withStatus(200)
++                                        .withHeader("Content-Type", APPLICATION_JSON_VALUE)
++                        )
++        );
++
++        given().standaloneSetup(this.walletController)
++                .param("creditCardNumber", "4111111111111111")
++                .param("amount", new BigDecimal(5000))
++                .when()
++                .post("/api/getWallet/someId/topUp")
++                .then()
++                .statusCode(HttpStatus.OK.value());
++
++    }
++
++    @Test
++    public void returnAnErrorWhenTopupWalletFails() throws URISyntaxException, IOException {
++
++        wireMockServer.stubFor(
++                post(urlEqualTo("http://localhost:9999"))
++                        .withRequestBody(equalTo(getJsonFromFile("stripeRequest.json")))
++                        .willReturn(
++                                aResponse()
++                                        .withStatus(404)
++                                        .withHeader("Content-Type", APPLICATION_JSON_VALUE)
++                        )
++        );
++
++        given(this.walletRepository.getWallet("someId")).willReturn(Optional.of(this.getWalletEntity()));
++        given().standaloneSetup(this.walletController)
++                .param("creditCardNumber", "411111111111")
++                .param("amount", new BigDecimal(0))
++                .when()
++                .post("/api/getWallet/someId/topUp")
++                .then()
++                .statusCode(HttpStatus.BAD_REQUEST.value());
++    }
++
++
++    private WalletEntity getWalletEntity() {
++        return new WalletEntity("someId", new BigDecimal(5000));
++    }
++
++
++    public static String getJsonFromFile(String name) throws URISyntaxException, IOException {
++        Path path = Paths.get(WalletApplicationIT.class.getClassLoader().getResource(name).toURI());
++        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
++    }
++
++    @Configuration
++    public static class TestConfiguration {
++
++        @Bean
++        public WalletRepository walletRepository() {
++            return mock(WalletRepository.class);
++        }
++
++        @Bean
++        public WalletHistoricRepository walletHistoricRepository() {
++            return mock(WalletHistoricRepository.class);
++        }
++
++    }
+ }
+Index: src/main/java/com/playtomic/tests/wallet/api/WalletController.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/api/WalletController.java b/src/main/java/com/playtomic/tests/wallet/api/WalletController.java
+--- a/src/main/java/com/playtomic/tests/wallet/api/WalletController.java	(revision 905e913c79d43fdefc989589c0aacfaed07290ec)
++++ b/src/main/java/com/playtomic/tests/wallet/api/WalletController.java	(date 1723976464308)
+@@ -1,16 +1,50 @@
+ package com.playtomic.tests.wallet.api;
+
++import com.playtomic.tests.wallet.service.*;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+-import org.springframework.web.bind.annotation.RequestMapping;
+-import org.springframework.web.bind.annotation.RestController;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.annotation.*;
++
++import java.math.BigDecimal;
+
+ @RestController
+ public class WalletController {
+-    private Logger log = LoggerFactory.getLogger(WalletController.class);
++    private final Logger log = LoggerFactory.getLogger(WalletController.class);
++
++    private final WalletService service;
++
++    @Autowired
++    public WalletController(WalletService service) {
++        this.service = service;
++    }
+
+     @RequestMapping("/")
+     void log() {
+         log.info("Logging from /");
+     }
++
++
++    @GetMapping(value = "/wallet/{id}")
++    public ResponseEntity<Wallet> getWallet(@PathVariable("id") String id) {
++        try {
++            Wallet wallet = service.getWallet(id);
++            return new ResponseEntity<>(wallet, HttpStatus.OK);
++        } catch (WalletNotFoundException e) {
++            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
++        }
++    }
++
++    @PostMapping(value = "/wallet/{id}/topUp")
++    public ResponseEntity topUp(@PathVariable("id") String id, String creditCardNumber, BigDecimal amount) {
++        try {
++            service.topUp(id, creditCardNumber, amount);
++            return new ResponseEntity<>(HttpStatus.OK);
++        } catch (WalletNotFoundException | StripeServiceException e) {
++            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
++        }
++    }
++
+ }
+Index: src/main/resources/stripeRequest.json
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/resources/stripeRequest.json b/src/main/resources/stripeRequest.json
+new file mode 100644
+--- /dev/null	(date 1723906505609)
++++ b/src/main/resources/stripeRequest.json	(date 1723906505609)
+@@ -0,0 +1,4 @@
++{
++"credit_card":4111111111111111,
++"amount": 5000
++}
+Index: src/test/java/com/playtomic/tests/wallet/service/impl/StripeServiceTest.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/test/java/com/playtomic/tests/wallet/service/impl/StripeServiceTest.java b/src/test/java/com/playtomic/tests/wallet/service/impl/StripeServiceTest.java
+--- a/src/test/java/com/playtomic/tests/wallet/service/impl/StripeServiceTest.java	(revision 905e913c79d43fdefc989589c0aacfaed07290ec)
++++ b/src/test/java/com/playtomic/tests/wallet/service/impl/StripeServiceTest.java	(date 1723810963232)
+@@ -20,17 +20,19 @@
+ public class StripeServiceTest {
+
+     URI testUri = URI.create("http://how-would-you-test-me.localhost");
+-    StripeService s = new StripeService(testUri, testUri, new RestTemplateBuilder());
++    StripeService stripeService = new StripeService(testUri, testUri, new RestTemplateBuilder());
+
+     @Test
+     public void test_exception() {
+         Assertions.assertThrows(StripeAmountTooSmallException.class, () -> {
+-            s.charge("4242 4242 4242 4242", new BigDecimal(5));
++            stripeService.charge("4242 4242 4242 4242", new BigDecimal(5));
+         });
+     }
+
+     @Test
+     public void test_ok() throws StripeServiceException {
+-        s.charge("4242 4242 4242 4242", new BigDecimal(15));
++        stripeService.charge("4242 4242 4242 4242", new BigDecimal(15));
+     }
++
++
+ }
+Index: src/main/java/com/playtomic/tests/wallet/infrastructure/WalletConfig.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletConfig.java b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletConfig.java
+new file mode 100644
+--- /dev/null	(date 1723977493529)
++++ b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletConfig.java	(date 1723977493529)
+@@ -0,0 +1,36 @@
++package com.playtomic.tests.wallet.infrastructure;
++
++import com.playtomic.tests.wallet.api.WalletController;
++import com.playtomic.tests.wallet.service.StripeService;
++import com.playtomic.tests.wallet.service.WalletService;
++import org.springframework.beans.factory.annotation.Value;
++import org.springframework.boot.web.client.RestTemplateBuilder;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++
++import java.net.URI;
++
++@Configuration
++public class WalletConfig {
++
++    @Value("${stripe.simulator.charges-uri}")
++    private String chargesUri;
++
++    @Value("${stripe.simulator.refunds-uri}")
++    private String refundsUri;
++
++    @Bean
++    public StripeService stripeService() {
++        return new StripeService(URI.create(chargesUri), URI.create(refundsUri), new RestTemplateBuilder());
++    }
++
++    @Bean
++    public WalletService service(WalletRepository walletRepository, WalletHistoricRepository walletHistoricRepository, StripeService stripeService) {
++        return new WalletService(walletRepository, walletHistoricRepository, stripeService);
++    }
++
++    @Bean
++    public WalletController walletController(WalletService service) {
++        return new WalletController(service);
++    }
++}
+Index: src/test/java/com/playtomic/tests/wallet/service/WalletServiceShould.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/test/java/com/playtomic/tests/wallet/service/WalletServiceShould.java b/src/test/java/com/playtomic/tests/wallet/service/WalletServiceShould.java
+new file mode 100644
+--- /dev/null	(date 1723975235543)
++++ b/src/test/java/com/playtomic/tests/wallet/service/WalletServiceShould.java	(date 1723975235543)
+@@ -0,0 +1,127 @@
++package com.playtomic.tests.wallet.service;
++
++import com.playtomic.tests.wallet.infrastructure.WalletEntity;
++import com.playtomic.tests.wallet.infrastructure.WalletHistoricRepository;
++import com.playtomic.tests.wallet.infrastructure.WalletRepository;
++import org.hibernate.HibernateException;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.extension.ExtendWith;
++import org.mockito.InOrder;
++import org.mockito.Mock;
++import org.mockito.Mockito;
++import org.mockito.junit.jupiter.MockitoExtension;
++
++import java.math.BigDecimal;
++import java.util.Optional;
++
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.BDDMockito.given;
++import static org.mockito.Mockito.*;
++
++@ExtendWith(MockitoExtension.class)
++class WalletServiceShould {
++
++    private WalletService service;
++
++    @Mock
++    private WalletRepository repository;
++
++    @Mock
++    private WalletHistoricRepository historicRepository;
++
++    @Mock
++    private StripeService stripeService;
++
++    @BeforeEach
++    public void setUp() {
++        service = new WalletService(repository,historicRepository, stripeService);
++    }
++
++    @Test
++    public void returnAWallet() throws WalletNotFoundException {
++        given(this.repository.getWallet("someId")).willReturn(Optional.of(this.getWalletEntity()));
++
++        Wallet wallet = service.getWallet("someId");
++
++        assertNotNull(wallet);
++        assertEquals("someId", wallet.getId());
++        assertEquals(new BigDecimal(5000), wallet.getCurrentBalance());
++    }
++
++    @Test
++    public void throwAnErrorWhenCannotFindWallet() {
++        given(this.repository.getWallet("someId")).willThrow(new WalletNotFoundException());
++
++        assertThrowsExactly(WalletNotFoundException.class, () -> service.getWallet("someId"));
++    }
++
++    @Test
++    public void topUpAWallet() throws WalletNotFoundException {
++        given(this.repository.getWallet("someId")).willReturn(Optional.of(this.getWalletEntity()));
++        given(this.stripeService.charge(any(), any())).willReturn(new Payment("payment_id"));
++
++        service.topUp("someId", "4111111111111111", new BigDecimal(5000));
++
++        InOrder inOrder = Mockito.inOrder(stripeService,repository,historicRepository);
++        verify(stripeService).charge("4111111111111111", new BigDecimal(5000));
++        verify(repository).save(any());
++        verify(historicRepository).save(any());
++    }
++
++
++    @Test
++    public void returnAnErrorWhenStripeFailsToTopup() {
++        given(this.repository.getWallet("someId")).willReturn(Optional.of(this.getWalletEntity()));
++        given(this.stripeService.charge("4111111111111111", new BigDecimal(0))).willThrow( new StripeServiceException());
++
++        assertThrowsExactly(StripeServiceException.class, () -> service.topUp("someId", "4111111111111111", new BigDecimal(0)));
++        verify(stripeService).charge("4111111111111111", new BigDecimal(0));
++
++    }
++
++    @Test
++    public void doNotStripeWhenThereIsNoWallet() throws WalletNotFoundException {
++        given(this.repository.getWallet("someId")).willReturn(Optional.empty());
++
++        assertThrowsExactly(WalletNotFoundException.class, () -> service.topUp("someId", "4111111111111111", new BigDecimal(5000)));
++
++        verifyNoInteractions(stripeService);
++        verifyNoMoreInteractions(repository);
++        verifyNoInteractions(historicRepository);
++    }
++
++    @Test
++    public void refundAmountWhenUpdateFails() throws WalletNotFoundException {
++        given(this.repository.getWallet("someId")).willReturn(Optional.of(this.getWalletEntity()));
++        given(this.repository.save(new WalletEntity("someId",new BigDecimal(10000)))).willThrow(HibernateException.class);
++        given(this.stripeService.charge(any(), any())).willReturn(new Payment("payment_id"));
++
++        service.topUp("someId", "4111111111111111", new BigDecimal(5000));
++
++        verify(stripeService).charge("4111111111111111", new BigDecimal(5000));
++        verifyNoInteractions(historicRepository);
++        verify(stripeService).refund("payment_id");
++    }
++
++    @Test
++    public void refundAmountWhenHistoricFails() throws WalletNotFoundException {
++        given(this.repository.getWallet("someId")).willReturn(Optional.of(this.getWalletEntity()));
++        given(this.historicRepository.save(any())).willThrow(HibernateException.class);
++        given(this.stripeService.charge(any(), any())).willReturn(new Payment("payment_id"));
++
++        service.topUp("someId", "4111111111111111", new BigDecimal(5000));
++
++        verify(stripeService).charge("4111111111111111", new BigDecimal(5000));
++        verify(repository).save(new WalletEntity("someId", new BigDecimal(10000)));
++        verify(stripeService).refund("payment_id");
++        verify(repository).save(new WalletEntity("someId", new BigDecimal(5000)));
++    }
++
++
++    private WalletEntity getWalletEntity() {
++        return new WalletEntity("someId", new BigDecimal(5000));
++    }
++
++}
+Index: src/main/java/com/playtomic/tests/wallet/infrastructure/WalletEntity.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletEntity.java b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletEntity.java
+new file mode 100644
+--- /dev/null	(date 1723975353879)
++++ b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletEntity.java	(date 1723975353879)
+@@ -0,0 +1,68 @@
++package com.playtomic.tests.wallet.infrastructure;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++import java.math.BigDecimal;
++import java.util.Objects;
++
++@Entity
++@Table(name = "WALLET")
++public class WalletEntity {
++
++    @Id
++    @Column(name = "ID")
++    private String id;
++
++    @Column(name = "CURRENT_BALANCE")
++    private BigDecimal currentBalance;
++
++
++    public WalletEntity(String id, BigDecimal currentBalance) {
++        this.id = id;
++        this.currentBalance = currentBalance;
++    }
++
++    public WalletEntity() {
++
++    }
++
++    public String getId() {
++        return id;
++    }
++
++    public void setId(String id) {
++        this.id = id;
++    }
++
++    public BigDecimal getCurrentBalance() {
++        return currentBalance;
++    }
++
++    public void setCurrentBalance(BigDecimal currentBalance) {
++        this.currentBalance = currentBalance;
++    }
++
++    @Override
++    public boolean equals(Object o) {
++        if (this == o) return true;
++        if (o == null || getClass() != o.getClass()) return false;
++        WalletEntity that = (WalletEntity) o;
++        return Objects.equals(id, that.id) && Objects.equals(currentBalance, that.currentBalance);
++    }
++
++    @Override
++    public int hashCode() {
++        return Objects.hash(id, currentBalance);
++    }
++
++    @Override
++    public String toString() {
++        return "WalletEntity{" +
++                "id='" + id + '\'' +
++                ", currentBalance=" + currentBalance +
++                '}';
++    }
++}
+Index: src/main/java/com/playtomic/tests/wallet/infrastructure/WalletHistoricRepository.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletHistoricRepository.java b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletHistoricRepository.java
+new file mode 100644
+--- /dev/null	(date 1723911775843)
++++ b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletHistoricRepository.java	(date 1723911775843)
+@@ -0,0 +1,14 @@
++package com.playtomic.tests.wallet.infrastructure;
++
++import org.springframework.data.repository.CrudRepository;
++import org.springframework.data.repository.query.Param;
++import org.springframework.stereotype.Repository;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.util.Optional;
++
++@Repository
++public interface WalletHistoricRepository extends CrudRepository<WalletHistoricEntity, String> {
++
++
++}
+Index: src/main/java/com/playtomic/tests/wallet/service/WalletNotFoundException.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/service/WalletNotFoundException.java b/src/main/java/com/playtomic/tests/wallet/service/WalletNotFoundException.java
+new file mode 100644
+--- /dev/null	(date 1723889461462)
++++ b/src/main/java/com/playtomic/tests/wallet/service/WalletNotFoundException.java	(date 1723889461462)
+@@ -0,0 +1,4 @@
++package com.playtomic.tests.wallet.service;
++
++public class WalletNotFoundException extends RuntimeException{
++}
+Index: src/main/java/com/playtomic/tests/wallet/infrastructure/WalletHistoricEntity.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletHistoricEntity.java b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletHistoricEntity.java
+new file mode 100644
+--- /dev/null	(date 1723973612003)
++++ b/src/main/java/com/playtomic/tests/wallet/infrastructure/WalletHistoricEntity.java	(date 1723973612003)
+@@ -0,0 +1,40 @@
++package com.playtomic.tests.wallet.infrastructure;
++
++import jakarta.persistence.*;
++
++import java.math.BigDecimal;
++import java.time.Instant;
++import java.util.Date;
++
++@Entity
++@Table(name = "WALLET_HISTORIC_ENTITY")
++public class WalletHistoricEntity {
++
++    @Id
++    @Column(name = "ID")
++    @GeneratedValue
++    private String id;
++
++    @Column(name = "WALLET_ID")
++    private String walletId;
++
++    @Column(name = "BALANCE")
++    private BigDecimal balance;
++
++    @Column(name = "TRANSACTION_DATE")
++    private Instant transactionDate;
++
++    @Column(name = "TRANSACTION_ID")
++    private String transactionId;
++
++    public WalletHistoricEntity(String walletId, BigDecimal balance, Instant transactionDate, String transactionId) {
++        this.walletId = walletId;
++        this.balance = balance;
++        this.transactionDate = transactionDate;
++        this.transactionId = transactionId;
++    }
++
++    public WalletHistoricEntity() {
++
++    }
++}
+Index: pom.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/pom.xml b/pom.xml
+--- a/pom.xml	(revision 905e913c79d43fdefc989589c0aacfaed07290ec)
++++ b/pom.xml	(date 1723976476396)
+@@ -60,6 +60,46 @@
+ 			<artifactId>spring-boot-starter-test</artifactId>
+ 			<scope>test</scope>
+ 		</dependency>
++
++		<dependency>
++			<groupId>org.mockito</groupId>
++			<artifactId>mockito-core</artifactId>
++			<version>5.11.0</version>
++			<scope>test</scope>
++		</dependency>
++
++		<dependency>
++			<groupId>io.rest-assured</groupId>
++			<artifactId>rest-assured</artifactId>
++			<scope>test</scope>
++		</dependency>
++
++		<!-- Spring Mock MVC -->
++		<dependency>
++			<groupId>io.rest-assured</groupId>
++			<artifactId>spring-mock-mvc</artifactId>
++			<scope>test</scope>
++		</dependency>
++
++		<dependency>
++			<groupId>org.mockito</groupId>
++			<artifactId>mockito-junit-jupiter</artifactId>
++			<scope>test</scope>
++		</dependency>
++
++		<dependency>
++			<groupId>org.junit.jupiter</groupId>
++			<artifactId>junit-jupiter-engine</artifactId>
++			<scope>test</scope>
++		</dependency>
++
++		<dependency>
++			<groupId>org.wiremock</groupId>
++			<artifactId>wiremock-standalone</artifactId>
++			<version>3.5.2</version>
++			<scope>test</scope>
++		</dependency>
++
+ 	</dependencies>
+
+ 	<build>
+@@ -70,4 +110,5 @@
+ 			</plugin>
+ 		</plugins>
+ 	</build>
++
+ </project>
