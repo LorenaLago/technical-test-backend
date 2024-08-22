@@ -52,7 +52,7 @@ class WalletServiceShould {
 
     @Test
     public void throwAnErrorWhenCannotFindWallet() {
-        given(this.repository.findById("someId")).willThrow(new WalletNotFoundException());
+        given(this.repository.findById("someId")).willReturn(Optional.empty());
 
         assertThrowsExactly(WalletNotFoundException.class, () -> service.getWallet("someId"));
     }
@@ -62,10 +62,10 @@ class WalletServiceShould {
         given(this.repository.findById("someId")).willReturn(Optional.of(this.getWalletEntity()));
         given(this.stripeService.charge(any(), any())).willReturn(new Payment("payment_id"));
 
-        service.topUp("someId", "4111111111111111", new BigDecimal(5000));
+        service.topUp("someId", "4111111111111111", BigDecimal.valueOf(5000));
 
         InOrder inOrder = Mockito.inOrder(stripeService,repository,historicRepository);
-        verify(stripeService).charge("4111111111111111", new BigDecimal(5000));
+        verify(stripeService).charge("4111111111111111", BigDecimal.valueOf(5000));
         verify(repository).save(any());
         verify(historicRepository).save(any());
     }
@@ -76,8 +76,8 @@ class WalletServiceShould {
         given(this.repository.findById("someId")).willReturn(Optional.of(this.getWalletEntity()));
         given(this.stripeService.charge("4111111111111111", new BigDecimal(0))).willThrow( new StripeServiceException());
 
-        assertThrowsExactly(StripeServiceException.class, () -> service.topUp("someId", "4111111111111111", new BigDecimal(0)));
-        verify(stripeService).charge("4111111111111111", new BigDecimal(0));
+        assertThrowsExactly(StripeServiceException.class, () -> service.topUp("someId", "4111111111111111", BigDecimal.ZERO));
+        verify(stripeService).charge("4111111111111111", BigDecimal.ZERO);
 
     }
 
@@ -85,7 +85,7 @@ class WalletServiceShould {
     public void doNotStripeWhenThereIsNoWallet() throws WalletNotFoundException {
         given(this.repository.findById("someId")).willReturn(Optional.empty());
 
-        assertThrowsExactly(WalletNotFoundException.class, () -> service.topUp("someId", "4111111111111111", new BigDecimal(5000)));
+        assertThrowsExactly(WalletNotFoundException.class, () -> service.topUp("someId", "4111111111111111", BigDecimal.valueOf(5000)));
 
         verifyNoInteractions(stripeService);
         verifyNoMoreInteractions(repository);
@@ -95,12 +95,12 @@ class WalletServiceShould {
     @Test
     public void refundAmountWhenUpdateFails() throws WalletNotFoundException {
         given(this.repository.findById("someId")).willReturn(Optional.of(this.getWalletEntity()));
-        given(this.repository.save(new WalletEntity("someId",new BigDecimal(10000)))).willThrow(HibernateException.class);
         given(this.stripeService.charge(any(), any())).willReturn(new Payment("payment_id"));
+        given(this.repository.save(new WalletEntity("someId",BigDecimal.valueOf(10000)))).willThrow(HibernateException.class);
 
-        service.topUp("someId", "4111111111111111", new BigDecimal(5000));
+        service.topUp("someId", "4111111111111111", BigDecimal.valueOf(5000));
 
-        verify(stripeService).charge("4111111111111111", new BigDecimal(5000));
+        verify(stripeService).charge("4111111111111111", BigDecimal.valueOf(5000));
         verifyNoInteractions(historicRepository);
         verify(stripeService).refund("payment_id");
     }
@@ -108,12 +108,12 @@ class WalletServiceShould {
     @Test
     public void refundAmountWhenHistoricFails() throws WalletNotFoundException {
         given(this.repository.findById("someId")).willReturn(Optional.of(this.getWalletEntity()));
-        given(this.historicRepository.save(any())).willThrow(HibernateException.class);
         given(this.stripeService.charge(any(), any())).willReturn(new Payment("payment_id"));
+        given(this.historicRepository.save(any())).willThrow(HibernateException.class);
 
-        service.topUp("someId", "4111111111111111", new BigDecimal(5000));
+        service.topUp("someId", "4111111111111111", BigDecimal.valueOf(5000));
 
-        verify(stripeService).charge("4111111111111111", new BigDecimal(5000));
+        verify(stripeService).charge("4111111111111111", BigDecimal.valueOf(5000));
         verify(repository).save(new WalletEntity("someId", new BigDecimal(10000)));
         verify(stripeService).refund("payment_id");
     }

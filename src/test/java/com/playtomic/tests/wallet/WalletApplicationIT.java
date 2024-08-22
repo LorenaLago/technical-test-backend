@@ -5,8 +5,7 @@ import com.playtomic.tests.wallet.api.WalletController;
 import com.playtomic.tests.wallet.infrastructure.WalletEntity;
 import com.playtomic.tests.wallet.infrastructure.WalletHistoricRepository;
 import com.playtomic.tests.wallet.infrastructure.WalletRepository;
-import com.playtomic.tests.wallet.service.WalletNotFoundException;
-import com.playtomic.tests.wallet.service.WalletService;
+import com.playtomic.tests.wallet.service.StripeService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +39,7 @@ public class WalletApplicationIT {
     private static final int WIREMOCK_PORT = 9999;
     private static WireMockServer wireMockServer;
 
+
     @Autowired
     private WalletController walletController;
     @Autowired
@@ -49,7 +49,7 @@ public class WalletApplicationIT {
     private WalletRepository walletRepository;
 
     @MockBean
-    private WalletService walletService;
+    private StripeService stripeService;
 
     @MockBean
     private WalletHistoricRepository walletHistoricRepository;
@@ -64,7 +64,7 @@ public class WalletApplicationIT {
 
     @BeforeEach
     public void initialize() {
-        reset(walletRepository, walletService, walletHistoricRepository);
+        reset(walletRepository, walletHistoricRepository, stripeService);
         wireMockServer.resetAll();
     }
 
@@ -91,12 +91,13 @@ public class WalletApplicationIT {
 
     @Test
     public void returnAnErrorForANotFoundWallet() {
-        given(this.walletRepository.findById("someId")).willThrow(new WalletNotFoundException());
+        given(this.walletRepository.findById("someId")).willReturn(Optional.empty());
         given().standaloneSetup(this.walletController)
                 .when()
                 .get("/api/wallet/someId")
                 .then()
                 .statusCode(HttpStatus.NOT_FOUND.value());
+
     }
 
     @Test
@@ -104,7 +105,7 @@ public class WalletApplicationIT {
         given(this.walletRepository.findById("someId")).willReturn(Optional.of(this.getWalletEntity()));
 
         wireMockServer.stubFor(
-                post(urlEqualTo("http://localhost:9999"))
+                post(urlEqualTo("https://sandbox.playtomic.io/v1/stripe-simulator/charges"))
                         .withRequestBody(equalTo(getJsonFromFile("stripeRequest.json")))
                         .willReturn(
                                 aResponse()
@@ -124,26 +125,27 @@ public class WalletApplicationIT {
     }
 
     @Test
-    public void returnAnErrorWhenTopupWalletFails() throws URISyntaxException, IOException {
+    public void returnAnErrorWhenTopUpWalletFails() throws URISyntaxException, IOException {
 
         wireMockServer.stubFor(
-                post(urlEqualTo("http://localhost:9999"))
+                post(urlEqualTo("https://sandbox.playtomic.io/v1/stripe-simulator/charges"))
                         .withRequestBody(equalTo(getJsonFromFile("stripeRequest.json")))
                         .willReturn(
                                 aResponse()
-                                        .withStatus(HttpStatus.BAD_REQUEST.value())
+                                        .withStatus(HttpStatus.INTERNAL_SERVER_ERROR.value())
                                         .withHeader("Content-Type", APPLICATION_JSON_VALUE)
                         )
         );
 
         given(this.walletRepository.findById("someId")).willReturn(Optional.of(this.getWalletEntity()));
-        given().standaloneSetup(this.walletController)
+
+        given().standaloneSetup(walletController)
                 .param("creditCardNumber", "411111111111")
                 .param("amount", BigDecimal.ZERO)
                 .when()
                 .post("/api/wallet/someId/topUp")
                 .then()
-                .statusCode(HttpStatus.BAD_REQUEST.value());
+                .statusCode(HttpStatus.INTERNAL_SERVER_ERROR.value());
     }
 
     private WalletEntity getWalletEntity() {

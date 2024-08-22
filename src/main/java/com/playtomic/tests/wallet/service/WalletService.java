@@ -40,17 +40,19 @@ public class WalletService {
     @Transactional
     public void topUp(String id, String creditCardNumber, BigDecimal amount) throws WalletNotFoundException, StripeServiceException {
         Payment payment = null;
-        Wallet wallet = null;
+        Wallet wallet = getWallet(id);
         try {
-            wallet = getWallet(id);
             payment = stripeService.charge(creditCardNumber, amount);
 
             BigDecimal updatedBalance = wallet.getCurrentBalance().add(amount);
+
             repository.save(new WalletEntity(id, updatedBalance));
             historicRepository.save(new WalletHistoricEntity(id, updatedBalance, Instant.now(), payment.getId()));
 
         } catch (HibernateException e) {
             if (payment != null) stripeService.refund(payment.getId());
+        } catch (StripeServiceException e){
+            throw e;
         }
     }
 }
