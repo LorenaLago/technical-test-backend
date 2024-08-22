@@ -43,11 +43,13 @@ public class WalletService {
         Wallet wallet = getWallet(id);
         try {
             payment = stripeService.charge(creditCardNumber, amount);
+            if (payment != null) {
+                BigDecimal updatedBalance = wallet.getCurrentBalance().add(amount);
 
-            BigDecimal updatedBalance = wallet.getCurrentBalance().add(amount);
+                repository.save(new WalletEntity(id, updatedBalance));
+                historicRepository.save(new WalletHistoricEntity(id, updatedBalance, Instant.now(), payment.getId()));
+            }
 
-            repository.save(new WalletEntity(id, updatedBalance));
-            historicRepository.save(new WalletHistoricEntity(id, updatedBalance, Instant.now(), payment.getId()));
 
         } catch (HibernateException e) {
             if (payment != null) stripeService.refund(payment.getId());

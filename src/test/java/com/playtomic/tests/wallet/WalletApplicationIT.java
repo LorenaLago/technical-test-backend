@@ -105,7 +105,7 @@ public class WalletApplicationIT {
         given(this.walletRepository.findById("someId")).willReturn(Optional.of(this.getWalletEntity()));
 
         wireMockServer.stubFor(
-                post(urlEqualTo("https://sandbox.playtomic.io/v1/stripe-simulator/charges"))
+                post(urlEqualTo("/v1/stripe-simulator/charges"))
                         .withRequestBody(equalTo(getJsonFromFile("stripeRequest.json")))
                         .willReturn(
                                 aResponse()
@@ -128,7 +128,7 @@ public class WalletApplicationIT {
     public void returnAnErrorWhenTopUpWalletFails() throws URISyntaxException, IOException {
 
         wireMockServer.stubFor(
-                post(urlEqualTo("https://sandbox.playtomic.io/v1/stripe-simulator/charges"))
+                post(urlEqualTo("/v1/stripe-simulator/charges"))
                         .withRequestBody(equalTo(getJsonFromFile("stripeRequest.json")))
                         .willReturn(
                                 aResponse()
@@ -147,6 +147,7 @@ public class WalletApplicationIT {
                 .then()
                 .statusCode(HttpStatus.INTERNAL_SERVER_ERROR.value());
     }
+
 
     private WalletEntity getWalletEntity() {
         return new WalletEntity("someId", BigDecimal.valueOf(5000));
