@@ -10,10 +10,10 @@ import lombok.NonNull;
 public class Payment {
 
     @NonNull
-    private String id;
+    private final String id;
 
     @JsonCreator
-    public Payment(@JsonProperty(value = "id", required = true) String id) {
+    public Payment(@JsonProperty(value = "id", required = true) @NonNull String id) {
         this.id = id;
     }
 }

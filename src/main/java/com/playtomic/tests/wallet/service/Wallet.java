@@ -3,11 +3,10 @@ package com.playtomic.tests.wallet.service;
 import com.playtomic.tests.wallet.infrastructure.WalletEntity;
 import lombok.Getter;
 import lombok.NonNull;
-import lombok.Setter;
 
 import java.math.BigDecimal;
 
-@Setter
+
 @Getter
 public class Wallet {
 
@@ -16,17 +15,15 @@ public class Wallet {
 
     private BigDecimal currentBalance;
 
-    public @NonNull String getId() {
-        return id;
+    public Wallet() {
     }
 
-    public void setId(@NonNull String id) {
+    public Wallet(@NonNull String id, BigDecimal currentBalance) {
         this.id = id;
+        this.currentBalance = currentBalance;
     }
 
-    public Wallet from(WalletEntity entity){
-        this.id = entity.getId();
-        this.currentBalance = entity.getCurrentBalance();
-        return this;
+    public Wallet from(WalletEntity entity) {
+        return new Wallet(entity.getId(), entity.getCurrentBalance());
     }
 }

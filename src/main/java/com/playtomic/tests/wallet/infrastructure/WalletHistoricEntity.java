@@ -1,12 +1,14 @@
 package com.playtomic.tests.wallet.infrastructure;
 
 import jakarta.persistence.*;
+import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
 @Table(name = "WALLET_HISTORIC_ENTITY")
+@Getter
 public class WalletHistoricEntity {
 
     @Id

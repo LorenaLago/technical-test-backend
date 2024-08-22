@@ -14,14 +14,15 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 
 @RestController
+@RequestMapping("/api")
 public class WalletController {
     private final Logger log = LoggerFactory.getLogger(WalletController.class);
 
-    private final WalletService service;
+    private final WalletService walletService;
 
     @Autowired
-    public WalletController(WalletService service) {
-        this.service = service;
+    public WalletController(WalletService walletService) {
+        this.walletService = walletService;
     }
 
     @RequestMapping("/")
@@ -33,7 +34,7 @@ public class WalletController {
     @GetMapping(value = "/wallet/{id}")
     public ResponseEntity<Wallet> getWallet(@PathVariable("id") String id) {
         try {
-            Wallet wallet = service.getWallet(id);
+            Wallet wallet = walletService.getWallet(id);
             return new ResponseEntity<>(wallet, HttpStatus.OK);
         } catch (WalletNotFoundException e) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
@@ -41,13 +42,18 @@ public class WalletController {
     }
 
     @PostMapping(value = "/wallet/{id}/topUp")
-    public ResponseEntity topUp(@PathVariable("id") String id, String creditCardNumber, BigDecimal amount) {
+    public ResponseEntity<Void> topUp(@PathVariable("id") String id,
+                                      @RequestParam("creditCardNumber") String creditCardNumber,
+                                      @RequestParam("amount") BigDecimal amount) {
         try {
-            service.topUp(id, creditCardNumber, amount);
-            return new ResponseEntity<>(HttpStatus.OK);
-        } catch (WalletNotFoundException | StripeServiceException e) {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            walletService.topUp(id, creditCardNumber, amount);
+            return ResponseEntity.ok().build();
+        } catch (WalletNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (StripeServiceException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
         }
     }
-
 }
